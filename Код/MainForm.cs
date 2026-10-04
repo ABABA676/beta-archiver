@@ -469,14 +469,46 @@ public sealed class MainForm : Form
             Warn("Не нашёл свой .exe — сначала собери программу (build.ps1).");
             return;
         }
+        if (!Association.IsOurExecutable(exe))
+        {
+            Warn($"Похоже, программа запущена не как «Бета» (путь: {exe}).\n\n" +
+                 "Привязывать .b3ta не буду, чтобы случайно не сделать обработчиком чужую программу.");
+            return;
+        }
+
         try
         {
-            Association.Register(exe);
+            var others = Association.Register(exe);
             RefreshAssocState();
-            Log($"Привязал .b3ta к «{Path.GetFileName(exe)}». 7-Zip и WinRAR остались в «Открыть с помощью».");
-            Info("Готово: .b3ta открывается двойным кликом в «Бете».\n\n"
-               + "В меню «Открыть с помощью» есть 7-Zip и WinRAR — файл у них открывается как обычный 7z.\n"
-               + "Привязка живёт только в твоём профиле Windows, у других людей ничего не меняется.");
+            Log($"Привязал .b3ta к «{Path.GetFileName(exe)}». В «Открыть с помощью» добавлены: " +
+                (others.Length == 0 ? "чужие архиваторы не найдены" : string.Join(", ", others)));
+
+            var text = "Готово: .b3ta открывается двойным кликом в «Бете».\n\n" +
+                       "Привязка живёт только в твоём профиле Windows — у других людей ничего не меняется.";
+            text += others.Length > 0
+                ? $"\nВ «Открыть с помощью» остались: {string.Join(", ", others)} — файл у них откроется как обычный 7z."
+                : "\nДругих архиваторов в системе не нашлось. Если поставишь 7-Zip или WinRAR — привяжи расширение ещё раз.";
+
+            var choice = Association.UserChoiceProgId();
+            if (choice is not null && choice != Association.ProgId)
+            {
+                var reset = MessageBox.Show(this,
+                    $"Раньше для .b3ta ты выбрал программу «{choice}» и поставил галочку «Всегда».\n" +
+                    "Пока этот выбор не сброшен, Windows будет открывать .b3ta ею, а не «Бетой».\n\nСбросить выбор?",
+                    "Бета", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+
+                if (reset == DialogResult.Yes && Association.ResetUserChoice())
+                {
+                    Log("Сбросил выбор программы по умолчанию для .b3ta.");
+                    text += "\nВыбор сброшен — теперь .b3ta открывается в «Бете».";
+                }
+                else
+                {
+                    text += $"\n\n⚠️ Пока выбор «Всегда» не сброшен, двойной клик будет открывать «{choice}».";
+                }
+            }
+
+            Info(text);
         }
         catch (Exception ex) { Warn("Не получилось привязать: " + ex.Message); }
     }
@@ -493,9 +525,28 @@ public sealed class MainForm : Form
     }
 
     private void RefreshAssocState() => Ui(() =>
-        _assocState.Text = Association.IsRegistered()
-            ? ".b3ta открывается здесь\nдвойной клик → «Бета»"
-            : $".b3ta пока не привязан (сейчас: {Association.DefaultHint()})\nАрхив → Привязать расширение");
+    {
+        try
+        {
+            if (Association.IsRegistered())
+            {
+                var recorded = Association.RegisteredExe() ?? "";
+                var same = string.Equals(recorded, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase);
+                _assocState.Text = same
+                    ? ".b3ta открывается здесь\nдвойной клик → «Бета»"
+                    : $".b3ta привязано, но exe переехал\n{recorded}";
+            }
+            else
+            {
+                _assocState.Text = $".b3ta пока не привязано (сейчас: {Association.DefaultHint()})\n" +
+                                   "Архив → Привязать расширение";
+            }
+        }
+        catch (Exception)
+        {
+            _assocState.Text = ".b3ta: не удалось прочитать реестр";
+        }
+    });
 
     private void About() => Info(
         $"Бета {AppInfo.Version}\n\n"

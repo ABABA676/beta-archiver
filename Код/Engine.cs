@@ -175,17 +175,17 @@ public static partial class Engine
     private static void EnsureOk(EngineRun run, string what)
     {
         if (run.TimedOut)
-            throw new EngineException($"7-Zip не закончил работу за 30 минут — операция прервана. Проблема при {what}.");
+            throw new EngineException($"7-Zip не закончил работу за 30 минут — операция прервана. Проблема при операции «{what}».");
         if (run.ExitCode == 0) return;
 
         var detail = LastError(run);
         var tail = detail.Length == 0 ? string.Empty : $" 7-Zip написал: «{detail}»";
         switch (run.ExitCode)
         {
-            case 1: throw new EngineException($"7-Zip закончил с предупреждениями (код 1) при {what}.{tail}");
-            case 2: throw new EngineException($"7-Zip не смог выполнить операцию (код 2) при {what}.{tail}");
-            case 7: throw new EngineException($"7-Zip не понял команду (код 7) при {what}.{tail}");
-            default: throw new EngineException($"7-Zip вернул код {run.ExitCode} при {what}.{tail}");
+            case 1: throw new EngineException($"7-Zip закончил с предупреждениями (код 1) при операции «{what}».{tail}");
+            case 2: throw new EngineException($"7-Zip не смог {what} (код 2).{tail}");
+            case 7: throw new EngineException($"7-Zip отверг команду (код 7) при операции «{what}».{tail}");
+            default: throw new EngineException($"7-Zip вернул код {run.ExitCode} при операции «{what}».{tail}");
         }
     }
 
@@ -256,7 +256,7 @@ public static partial class Engine
         if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
 
         var run = Run(args, progress, log, workDir, ct: ct);
-        EnsureOk(run, "упаковки");
+        EnsureOk(run, "упаковать");
         return run;
     }
 
@@ -272,7 +272,7 @@ public static partial class Engine
         var run = Run(
             new[] { "x", "-y", $"-o{destDir}", "-bso1", "-bsp1", "-bb0", "-sccUTF-8", "--", Path.GetFullPath(archivePath) },
             progress, log, ct: ct);
-        EnsureOk(run, "распаковки");
+        EnsureOk(run, "распаковать");
         return run;
     }
 
@@ -282,7 +282,7 @@ public static partial class Engine
         // -ba убирает баннер, шапку архива и разделители — остаётся чистый поток блоков «пустая строка / Поле = Значение»
         EnsureLooksLikeArchive(archivePath);
         var run = Run(new[] { "l", "-slt", "-ba", "-bb0", "-sccUTF-8", "--", Path.GetFullPath(archivePath) });
-        EnsureOk(run, "чтения списка файлов");
+        EnsureOk(run, "прочитать список файлов");
 
         var list = new List<EntryInfo>();
         string? path = null, size = null, packed = null, attrs = null, type = null;
@@ -307,6 +307,14 @@ public static partial class Engine
             else if (line.StartsWith("Type = ", StringComparison.Ordinal)) type = line[7..];
         }
         Flush();
+
+        // Непустой файл, из которого не вышло ни одной записи, — почти наверняка изменился формат вывода 7-Zip.
+        // Молча показывать пустой список нельзя: это хуже, чем явная ошибка.
+        if (list.Count == 0 && new FileInfo(archivePath).Length > 0)
+            throw new EngineException(
+                $"7-Zip не вернул ни одной записи для {Path.GetFileName(archivePath)} — " +
+                "похоже, он изменил формат вывода. Обнови 7-Zip или сообщи разработчику.");
+
         return list;
 
         static long Num(string? s) => long.TryParse(s, out var v) ? v : -1;
@@ -321,7 +329,7 @@ public static partial class Engine
     {
         EnsureLooksLikeArchive(archivePath);
         var run = Run(new[] { "t", "-bb0", "-sccUTF-8", "--", Path.GetFullPath(archivePath) }, ct: ct);
-        EnsureOk(run, "проверки архива");
+        EnsureOk(run, "проверить архив");
         return run;
     }
 

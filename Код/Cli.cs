@@ -50,28 +50,48 @@ internal static class Cli
             Движок: {Engine.ExePath}{(Engine.Available ? "" : "  [НЕ НАЙДЕН]")}
 
             Команды:
-              --pack <архив{Engine.Extension}> <файл|папка…>   упаковать (обычный 7z внутри)
+              --pack [-mx=N] <архив{Engine.Extension}> <файл|папка…>   упаковать (обычный 7z внутри)
               --extract <архив{Engine.Extension}> <папку>      распаковать
               --list <архив{Engine.Extension}>                 что внутри
               --test <архив{Engine.Extension}>                 проверить целостность
-              --selftest                                       полная самопроверка
+              --selftest                                       полная самопроверка движка и ошибок
+              --uitest                                         проверка, что окно создаётся
+              -h, /?                                           эта справка
             """);
         return 0;
     }
 
     private static int Pack(string[] a)
     {
-        if (a.Length < 2) { Console.Error.WriteLine("Нужно: --pack <архив> <файл|папка…>"); return 2; }
         var level = 5;
-        var items = a.Skip(1).ToList();
-        if (items[0].StartsWith("-mx", StringComparison.OrdinalIgnoreCase) &&
-            int.TryParse(items[0].AsSpan(3).TrimStart('='), out var parsed))
+        // ВНИМАНИЕ: сюда уже пришли аргументы без имени команды (Cli зовёт Pack(args[1..])),
+        // поэтому Skip(1) здесь был бы ошибкой — он молча отбрасывал первый аргумент,
+        // и «--pack -mx=0 арх файл» уходил в 7z с уровнем по умолчанию.
+        var rest = new List<string>(a);
+
+        // -mx может стоять где угодно: раньше он распознавался только первым аргументом, и команда
+        // «--pack -mx=9 out.b3ta файл» молча создавала архив с именем «-mx=9», а уровень оставался 5.
+        rest.RemoveAll(x =>
         {
-            level = parsed;
-            items.RemoveAt(0);
+            if (!x.StartsWith("-mx", StringComparison.OrdinalIgnoreCase)) return false;
+            // string.TrimStart(params char[]) — у ReadOnlySpan<char> такой перегрузки нет, только один символ
+            var digits = x.Length > 3 ? x[3..].TrimStart('=', ' ') : string.Empty;
+            if (!int.TryParse(digits, out var parsed)) return false;
+            level = Math.Clamp(parsed, 0, 9);
+            return true;
+        });
+
+        if (rest.Count < 2)
+        {
+            Console.Error.WriteLine("Нужно: --pack [-mx=N] <архив> <файл|папка…>");
+            return 2;
         }
-        var run = Engine.Pack(a[0], items, level, p => Console.Write($"\r  {p,3}% "), Console.WriteLine);
-        Console.WriteLine($"\nГотово: {a[0]} ({EntryInfo.Human(new FileInfo(a[0]).Length)}), записей в логе: {run.Lines.Count}");
+
+        var archive = rest[0];
+        var items = rest.Skip(1).ToList();
+        var run = Engine.Pack(archive, items, level, p => Console.Write($"\r  {p,3}% "), Console.WriteLine);
+        Console.WriteLine($"\nГотово: {archive} ({EntryInfo.Human(new FileInfo(archive).Length)}), " +
+                          $"уровень {level}, строк в выводе 7-Zip: {run.Lines.Count}");
         return 0;
     }
 
