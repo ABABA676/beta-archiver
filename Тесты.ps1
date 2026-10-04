@@ -13,7 +13,9 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $exe = Join-Path $root 'Билд\Бета.exe'
 
-if (-not (Test-Path $exe)) {
+# Пересобираем всегда, если попросили -SelfContained: иначе флаг молча игнорировался бы
+# при уже существующем exe, и пользователь получил бы не тот файл, о котором думает.
+if (-not (Test-Path $exe) -or $SelfContained) {
     Write-Host 'Сборки нет — собираем…' -ForegroundColor Cyan
     & (Join-Path $root 'build.ps1') -SelfContained:$SelfContained
 }

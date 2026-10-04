@@ -1,22 +1,21 @@
 ﻿<#
     Генератор иконки «Беты» — ЯБЛОКО РАЗДОРА.
 
-    Замысел: не «мультяшная рука с яблоком», а величественный знак —
-    тёмный медальон, бронзовая рука (как у статуи), багровое яблоко, золото.
-    Обладатель уже получил яблоко и намеревается творить великие планы.
+    Замысел: величественный знак — тёмный медальон, бронзовая рука (как у статуи), багровое
+    яблоко, золото. Обладатель уже получил яблоко и намеревается творить великие планы.
 
-    Идея реализации: рисуем ВЕКТОРНО в координатах 0..1 и масштамируем на каждый размер
-    ОТДЕЛЬНО, потому что одна картинка на все размеры не читается:
-      • ≤20 px  — тёмный круг + яблоко (без руки и без кольца: детали превращаются в грязь)
-      • 24–40 px — круг + золотое кольцо + яблоко + простая бронзовая «чаша»
-      • ≥48 px  — полный вариант: кольцо, большой палец, золото�� лист, свечение, искры
+    Рисуем ВЕКТОРНО в координатах 0..1 и масштабируем на каждый размер ОТДЕЛЬНО, потому что
+    одна картинка на все размеры не читается:
+      • ≤20 px  — тёмный круг + яблоко (рука на таком размере превращается в бурую кляксу)
+      • 24–40 px — кольцо + яблоко + «чаша» ладони
+      • ≥48 px  — полностью: кольцо, палец, разделяющие складки, золотой лист, блик
 
     Что делает:
-      • Ресурсы\Бета.ico      — многослойная иконка (BMP для мелких, PNG для 128/256)
-      • Ресурсы\icon-*.png    — то же отдельными файлами (для README и витрины)
+      • Ресурсы\Бета.ico      — многослойная иконка (DIB для 16…64, PNG для 128/256)
+      • Ресурсы\icon-*.png    — 5 отдельных PNG (16, 32, 48, 128, 256) для README и витрины
       • Ресурсы\preview.png   — контрольный лист: все размеры на светлом и тёмном фоне
 
-    Запуск:  .\make_icon.ps1
+    Запуск:  .\make_icon.ps1  [-OutDir папка]
 #>
 [CmdletBinding()]
 param([string]$OutDir)
@@ -38,10 +37,11 @@ $script:Gold2     = C 150 116 32     # золото тёмное
 $script:Bronze1   = C 226 190 118    # бронза светлая
 $script:Bronze2   = C 96 70 26       # бронза тёмная
 $script:BronzeEdge = C 44 32 10      # контур бронзы
+$script:Fold       = C 58 41 14      # складки между пальцами
 $script:Apple1    = C 226 59 46      # яблоко сверху
 $script:Apple2    = C 104 12 17      # яблоко снизу
 $script:AppleEdge = C 46 6 9         # контур яблока
-$script:Gloss     = CA 120 255 236 214
+$script:Gloss     = CA 90 255 238 214
 
 # --- силуэт яблока ---
 function New-ApplePath {
@@ -55,7 +55,7 @@ function New-ApplePath {
     $p
 }
 
-# --- «чаша» бронзовой руки; верхняя кромка спрятана за яблоком ---
+# --- ладонь: широкая чаша под яблоком, верхняя кромка спрятана за яблоком ---
 function New-HandPath {
     $p = [System.Drawing.Drawing2D.GraphicsPath]::new()
     $p.StartFigure()
@@ -77,23 +77,6 @@ function New-BlobPath([single]$cx, [single]$cy, [single]$w, [single]$h, [single]
     $m.Rotate([single]$deg)
     $m.Translate([single](- $cx), [single](- $cy))
     $p.Transform($m)
-    $p
-}
-
-# четырёхлучевая искра
-function New-SparkPath([single]$cx, [single]$cy, [single]$r) {
-    $p = [System.Drawing.Drawing2D.GraphicsPath]::new()
-    $q = $r * 0.26
-    $p.AddPolygon([System.Drawing.PointF[]]@(
-        [System.Drawing.PointF]::new($cx, $cy - $r),
-        [System.Drawing.PointF]::new($cx + $q, $cy - $q),
-        [System.Drawing.PointF]::new($cx + $r, $cy),
-        [System.Drawing.PointF]::new($cx + $q, $cy + $q),
-        [System.Drawing.PointF]::new($cx, $cy + $r),
-        [System.Drawing.PointF]::new($cx - $q, $cy + $q),
-        [System.Drawing.PointF]::new($cx - $r, $cy),
-        [System.Drawing.PointF]::new($cx - $q, $cy - $q)
-    ))
     $p
 }
 
@@ -127,33 +110,23 @@ function Draw-Icon([System.Drawing.Graphics]$g, [int]$size) {
         $g.FillPath($gold, $ring)
     }
 
-    # --- 3. свечение за яблоком (только крупные) ---
-    if ($size -ge 48) {
-        foreach ($ring2 in @(@(0.46, 16), @(0.38, 22), @(0.30, 30))) {
-            $d = [single]$ring2[0]
-            $a = [int]$ring2[1]
-            $col = CA $a 255 214 160          # вызов функции внутри аргументов метода недопустим — считаем заранее
-            $g.FillEllipse([System.Drawing.SolidBrush]::new($col), (0.5 - $d / 2), (0.42 - $d / 2), $d, $d)
-        }
-    }
-
-    # --- 4. бронзовая рука (сзади) ---
+    # --- 3. бронзовая ладонь (сзади) ---
     if ($detail -ne 'apple') {
         $hand = New-HandPath
         $bronze = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
-            [System.Drawing.PointF]::new(0.2, 0.45), [System.Drawing.PointF]::new(0.8, 0.97), $Bronze1, $Bronze2)
+            [System.Drawing.PointF]::new(0.2, 0.45), [System.Drawing.PointF]::new(0.8, 0.87), $Bronze1, $Bronze2)
         $g.FillPath($bronze, $hand)
         $g.DrawPath([System.Drawing.Pen]::new($BronzeEdge, [single]$edge), $hand)
     }
 
-    # --- 5. яблоко раздора ---
+    # --- 4. яблоко раздора ---
     $apple = New-ApplePath
     $crimson = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
         [System.Drawing.PointF]::new(0.5, 0.14), [System.Drawing.PointF]::new(0.5, 0.78), $Apple1, $Apple2)
     $g.FillPath($crimson, $apple)
     $g.DrawPath([System.Drawing.Pen]::new($AppleEdge, [single]$(if ($detail -eq 'apple') { 0.03 } else { $edge })), $apple)
 
-    # --- 6. золотой лист и ветка ---
+    # --- 5. золотой лист и ветка ---
     $stemPen = [System.Drawing.Pen]::new($Gold2, [single]$(if ($size -le 20) { 0.07 } else { 0.05 }))
     $stemPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
     $stemPen.EndCap   = [System.Drawing.Drawing2D.LineCap]::Round
@@ -165,25 +138,27 @@ function Draw-Icon([System.Drawing.Graphics]$g, [int]$size) {
     $g.FillPath($leafFill, $leafPath)
     if ($size -ge 32) { $g.DrawPath([System.Drawing.Pen]::new($BronzeEdge, [single]0.022), $leafPath) }
 
-    # --- 7. большой палец (только крупные) ---
+    # --- 6. большой палец: начинается В ЛАДОНИ и заходит на яблоко, поэтому читается как часть руки,
+    #        а не как отдельное пятно. Только с 48 px — на мелких это лишний шум.
     if ($detail -eq 'full') {
-        $thumb = New-BlobPath 0.735 0.585 0.355 0.130 (-42)
+        $thumb = New-BlobPath 0.700 0.645 0.400 0.150 (-36)
         $thumbFill = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
-            [System.Drawing.PointF]::new(0.60, 0.47), [System.Drawing.PointF]::new(0.90, 0.72), $Bronze1, $Bronze2)
+            [System.Drawing.PointF]::new(0.58, 0.52), [System.Drawing.PointF]::new(0.86, 0.78), $Bronze1, $Bronze2)
         $g.FillPath($thumbFill, $thumb)
         $g.DrawPath([System.Drawing.Pen]::new($BronzeEdge, [single]0.028), $thumb)
+
+        # складки между пальцами — без них бронза читается миской
+        $fold = [System.Drawing.Pen]::new($Fold, [single]0.024)
+        $fold.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $fold.EndCap   = [System.Drawing.Drawing2D.LineCap]::Round
+        $g.DrawLine($fold, 0.170, 0.620, 0.196, 0.775)
+        $g.DrawLine($fold, 0.268, 0.650, 0.286, 0.808)
+        $g.DrawLine($fold, 0.836, 0.628, 0.818, 0.782)
     }
 
-    # --- 8. блик и искры величия ---
+    # --- 7. блик на яблоке (только крупные) ---
     if ($size -ge 48) {
-        $g.FillEllipse([System.Drawing.SolidBrush]::new($Gloss), 0.275, 0.320, 0.135, 0.095)
-    }
-    if ($size -ge 64) {
-        $spark = [System.Drawing.SolidBrush]::new($Gold1)
-        foreach ($s in @(@(0.205, 0.235, 0.055), @(0.815, 0.315, 0.040))) {
-            $sp = New-SparkPath ([single]$s[0]) ([single]$s[1]) ([single]$s[2])
-            $g.FillPath($spark, $sp)
-        }
+        $g.FillEllipse([System.Drawing.SolidBrush]::new($Gloss), 0.278, 0.322, 0.130, 0.092)
     }
 }
 
@@ -209,11 +184,11 @@ function Get-BmpEntry([System.Drawing.Bitmap]$bmp) {
     $ms = [System.IO.MemoryStream]::new()
     $bw = [System.IO.BinaryWriter]::new($ms)
     $bw.Write([int]40); $bw.Write([int]$w); $bw.Write([int]($h * 2))
-    $bw.Write([uint16]1); $bw.Write([uint16]32)   # biPlanes и biBitCount — по 2 байта; если писать int, заголовок расползается на 4 байта и .ico битый
+    $bw.Write([uint16]1); $bw.Write([uint16]32)   # biPlanes и biBitCount — по 2 байта, иначе заголовок расползается на 4 байта
     $bw.Write([int]0)                              # biCompression = BI_RGB
-    $bw.Write([int]($stride * $h))                # biSizeImage
+    $bw.Write([int]($stride * $h))                 # biSizeImage
     $bw.Write([int]0); $bw.Write([int]0); $bw.Write([int]0); $bw.Write([int]0)
-    for ($y = $h - 1; $y -ge 0; $y--) {
+    for ($y = $h - 1; $y -ge 0; $y--) {           # XOR: строки снизу вверх, B,G,R,A
         $row = $y * $stride
         for ($x = 0; $x -lt $w; $x++) {
             $i = $row + $x * 4
@@ -221,7 +196,7 @@ function Get-BmpEntry([System.Drawing.Bitmap]$bmp) {
         }
     }
     $maskStride = [int]([Math]::Ceiling($w / 32.0) * 4)
-    $bw.Write([byte[]]::new($maskStride * $h))
+    $bw.Write([byte[]]::new($maskStride * $h))    # AND-маска: нули = непрозрачно
     $bw.Flush()
     $bytes = $ms.ToArray()
     $bw.Dispose(); $ms.Dispose()
@@ -231,7 +206,9 @@ function Get-BmpEntry([System.Drawing.Bitmap]$bmp) {
 function Get-PngEntry([System.Drawing.Bitmap]$bmp) {
     $ms = [System.IO.MemoryStream]::new()
     $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
-    , $ms.ToArray()
+    $bytes = $ms.ToArray()
+    $ms.Dispose()
+    , $bytes
 }
 
 $sizes = 16, 20, 24, 32, 40, 48, 64, 128, 256
@@ -243,35 +220,37 @@ foreach ($s in $sizes) {
 }
 
 $ico = [System.IO.MemoryStream]::new()
-$w = [System.IO.BinaryWriter]::new($ico)
+$iw = [System.IO.BinaryWriter]::new($ico)
 # ICONDIR = 6 байт: reserved, type, count — все три по 2 байта. Если писать int, файл «плывёт» на 6 байт.
-$w.Write([uint16]0)            # reserved
-$w.Write([uint16]1)            # type = 1 (икона)
-$w.Write([uint16]$frames.Count)
+$iw.Write([uint16]0)
+$iw.Write([uint16]1)
+$iw.Write([uint16]$frames.Count)
 $offset = 6 + 16 * $frames.Count
 foreach ($f in $frames) {
     $dim = if ($f.Size -ge 256) { 0 } else { $f.Size }
-    $w.Write([byte]$dim); $w.Write([byte]$dim)     # ширина и высота (0 = 256)
-    $w.Write([byte]0); $w.Write([byte]0)            # палитра и резерв
-    $w.Write([uint16]1); $w.Write([uint16]32)       # planes и bitCount — по 2 байта, иначе запись кадра расползается
-    $w.Write([int]$f.Data.Length); $w.Write([int]$offset)
+    $iw.Write([byte]$dim); $iw.Write([byte]$dim)     # ширина и высота (0 = 256)
+    $iw.Write([byte]0); $iw.Write([byte]0)            # палитра и резерв
+    $iw.Write([uint16]1); $iw.Write([uint16]32)       # planes и bitCount — по 2 байта
+    $iw.Write([int]$f.Data.Length); $iw.Write([int]$offset)
     $offset += $f.Data.Length
 }
-foreach ($f in $frames) { $w.Write([byte[]]$f.Data) }
-$w.Flush()
+foreach ($f in $frames) { $iw.Write([byte[]]$f.Data) }
+$iw.Flush()
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $icoPath = Join-Path $OutDir 'Бета.ico'
 [System.IO.File]::WriteAllBytes($icoPath, $ico.ToArray())
-$w.Dispose(); $ico.Dispose()
+$iw.Dispose(); $ico.Dispose()
 
 foreach ($s in 16, 32, 48, 128, 256) {
     $bmp = ($frames | Where-Object { $_.Size -eq $s }).Bitmap
     [System.IO.File]::WriteAllBytes((Join-Path $OutDir "icon-$s.png"), (Get-PngEntry $bmp))
 }
+# ⚠️ Bitmap'ы освобождаем ТОЛЬКО в самом конце: контрольный лист ниже рисует их же,
+# и Dispose до него даёт «DrawImage: недопустимый параметр».
 
-# контрольный лист: размеры на светлом и тёмном фоне
-$cell = 150
+# Контрольный лист. Ячейка обязана быть больше самой большой иконки, иначе кадр 256 обрезается.
+$cell = [int][Math]::Max(160, $sizes[-1] + 24)
 $sheet = [System.Drawing.Bitmap]::new($sizes.Count * $cell, ($cell * 2 + 34), [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
 $gs = [System.Drawing.Graphics]::FromImage($sheet)
 $gs.Clear([System.Drawing.Color]::FromArgb(255, 236, 236, 232))
@@ -279,17 +258,21 @@ $gs.FillRectangle([System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromA
 $font = [System.Drawing.Font]::new('Segoe UI', 9)
 $brush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(255, 90, 95, 110))
 $brushLight = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(255, 200, 205, 215))
-for ($i = 0; $i -lt $sizes.Count; $i++) {
-    $bmp = $frames[$i].Bitmap
+$previewSizes = @(16, 20, 24, 32, 40, 48, 64, 128, 256)
+for ($i = 0; $i -lt $previewSizes.Count; $i++) {
+    $bmp = ($frames | Where-Object { $_.Size -eq $previewSizes[$i] }).Bitmap
     $x = $i * $cell + [int](($cell - $bmp.Width) / 2)
-    $gs.DrawString("$($sizes[$i]) px", $font, $brush, ($i * $cell + 8), 3)
+    $gs.DrawString("$($previewSizes[$i]) px", $font, $brush, ($i * $cell + 8), 3)
     $gs.DrawImage($bmp, $x, [int](($cell - $bmp.Height) / 2))
-    $gs.DrawString("$($sizes[$i]) px", $font, $brushLight, ($i * $cell + 8), ($cell + 22))
+    $gs.DrawString("$($previewSizes[$i]) px", $font, $brushLight, ($i * $cell + 8), ($cell + 22))
     $gs.DrawImage($bmp, $x, ($cell + 17) + [int](($cell - $bmp.Height) / 2))
 }
 $gs.Dispose()
+$font.Dispose(); $brush.Dispose(); $brushLight.Dispose()
 [System.IO.File]::WriteAllBytes((Join-Path $OutDir 'preview.png'), (Get-PngEntry $sheet))
 $sheet.Dispose()
+
+foreach ($f in $frames) { $f.Bitmap.Dispose() }   # всё, что больше не нужно, освобождаем в конце
 
 Write-Host "иконка: $icoPath  ($([math]::Round((Get-Item $icoPath).Length / 1KB, 1)) КБ; кадры: $($sizes -join ', '))"
 Write-Host "превью: $(Join-Path $OutDir 'preview.png')"
