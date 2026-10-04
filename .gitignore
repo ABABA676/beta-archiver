@@ -1,0 +1,11 @@
+# Сборка не в репозитории
+Билд/
+bin/
+obj/
+*.user
+.vs/
+
+# Мусор
+*.log
+Thumbs.db
+desktop.ini
