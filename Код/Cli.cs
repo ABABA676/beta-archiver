@@ -154,6 +154,13 @@ internal static class Cli
             else { fail++; Console.WriteLine($"  FAIL  {name}{(detail is null ? "" : " — " + detail)}"); }
         }
 
+        // Вызывает Engine.List и ждёт понятную ошибку вместо «код 2» от 7-Zip
+        static bool TryFails(string path, out string message)
+        {
+            try { Engine.List(path); message = string.Empty; return false; }
+            catch (EngineException ex) { message = ex.Message; return true; }
+        }
+
         Console.WriteLine($"Бета {AppInfo.Version} — самопроверка");
         Console.WriteLine($"движок: {Engine.ExePath} — {(Engine.Available ? "найден" : "НЕ НАЙДЕН")}");
         if (!Engine.Available)
@@ -206,6 +213,12 @@ internal static class Cli
                 new[] { "проверка текста.txt", "картинка.bin" }
                     .All(name => list.Any(e => e.Path.EndsWith("/" + name, StringComparison.OrdinalIgnoreCase))),
                 string.Join(" | ", list.Select(e => e.Path)));
+            // 7-Zip 23.01: у непустых папок нет «Folder = +», признак папки — буква D в Attributes
+            Check("папки помечены правильно (Attributes = D, у папок Size = 0)",
+                list.Count(e => e.IsFolder) == 2
+                && list.Where(e => e.IsFolder).All(e => e.Size == 0)
+                && list.Where(e => !e.IsFolder).All(e => e.Size > 0),
+                string.Join(" | ", list.Select(e => $"{e.Path}{(e.IsFolder ? " [папка]" : "")} size={e.Size}")));
 
             // 4. распаковка
             var outDir = Path.Combine(tmp, "Распаковка");
@@ -248,14 +261,19 @@ internal static class Cli
             Engine.Pack(Path.Combine(tmp, $"прогресс{Engine.Extension}"), new[] { srcRoot }, 1, seen.Add);
             Check("прогресс приходит", seen.Count > 0, $"событий: {seen.Count}");
 
-            // 10. мусорный файл даёт понятную ошибку, а не молчание
+            // 10. «не архив» распознаём сами ДО запуска 7-Zip и объясняем по-человечески:
+            //     на такие файлы 7-Zip отвечает кодом 2 и невнятным «Cannot open the file as archive»
             var junk = Path.Combine(tmp, $"мусор{Engine.Extension}");
             File.WriteAllBytes(junk, [1, 2, 3, 4, 5, 6, 7, 8]);
-            var understandable = false;
-            var message = "";
-            try { Engine.List(junk); }
-            catch (EngineException ex) { understandable = true; message = ex.Message; }
-            Check("мусорный файл → понятная ошибка", understandable, "исключения не было");
+            Check("у мусора нет сигнатуры 7z", !Engine.Has7zSignature(junk));
+            Check("мусорный .b3ta → «это не архив», а не «код 2»",
+                TryFails(junk, out var junkMsg) && junkMsg.Contains("не архив"), junkMsg);
+            var fakeDir = Path.Combine(tmp, $"папка{Engine.Extension}");
+            Directory.CreateDirectory(fakeDir);
+            Check("папка с расширением .b3ta → «это папка»",
+                TryFails(fakeDir, out var dirMsg) && dirMsg.Contains("папка"), dirMsg);
+            Check("несуществующий файл → «не найден»",
+                TryFails(Path.Combine(tmp, "нет-такого.b3ta"), out var missMsg) && missMsg.Contains("не найден"), missMsg);
 
             // 11. отмена: токен отменён до старта — 7z должен быть убит, а программа — выйти без зависания
             using (var cts = new CancellationTokenSource())
