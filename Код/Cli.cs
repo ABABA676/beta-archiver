@@ -161,6 +161,27 @@ internal static class Cli
             catch (EngineException ex) { message = ex.Message; return true; }
         }
 
+        // Создаёт архив НЕ нашего формата (zip/gz) прямо через 7z — для проверки совместимости
+        static void RunZip(string command, string archive, params string[] items)
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = Engine.ExePath,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            psi.ArgumentList.Add(command);
+            psi.ArgumentList.Add("-y");
+            psi.ArgumentList.Add("-bb0");
+            psi.ArgumentList.Add("-sccUTF-8");
+            psi.ArgumentList.Add(archive);
+            foreach (var i in items) psi.ArgumentList.Add(i);
+            using var p = System.Diagnostics.Process.Start(psi)!;
+            p.WaitForExit();
+        }
+
         Console.WriteLine($"Бета {AppInfo.Version} — самопроверка");
         Console.WriteLine($"движок: {Engine.ExePath} — {(Engine.Available ? "найден" : "НЕ НАЙДЕН")}");
         if (!Engine.Available)
@@ -274,6 +295,15 @@ internal static class Cli
                 TryFails(fakeDir, out var dirMsg) && dirMsg.Contains("папка"), dirMsg);
             Check("несуществующий файл → «не найден»",
                 TryFails(Path.Combine(tmp, "нет-такого.b3ta"), out var missMsg) && missMsg.Contains("не найден"), missMsg);
+
+            // 11. Регрессия: чужие форматы 7z нельзя рубить по сигнатуре 7z — «Что внутри» должно работать и на .zip
+            var zip = Path.Combine(tmp, "проверка.zip");
+            RunZip("a", zip, Path.Combine(srcRoot, "картинка.bin"));
+            Check("чужой формат .zip проходит проверку (не рубим по сигнатуре 7z)",
+                File.Exists(zip) && Engine.Has7zSignature(zip) == false && Engine.List(zip).Count > 0);
+            var gz = Path.Combine(tmp, "проверка.txt.gz");
+            RunZip("a", gz, Path.Combine(srcRoot, "картинка.bin"));
+            Check("чужой формат .gz тоже читается", !gz.Contains(".b3ta") && Engine.List(gz).Count > 0);
 
             // 11. отмена: токен отменён до старта — 7z должен быть убит, а программа — выйти без зависания
             using (var cts = new CancellationTokenSource())

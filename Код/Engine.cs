@@ -152,7 +152,9 @@ public static partial class Engine
 
     /// <summary>
     /// Проверка ДО запуска 7z: 7-Zip для «не архива» отдаёт код 2 с невнятным сообщением,
-    /// поэтому проверяем сами и говорим по-человечески. Сигнатура 7z — единственный честный признак.
+    /// поэтому проверяем сами и говорим по-человечески.
+    /// Сигнатуру 7z требуем ТОЛЬКО для нашего расширения: чужие форматы (.zip, .rar, .tar, .gz…)
+    /// 7-Zip разбирает сам, и рубить их по сигнатуре нельзя.
     /// </summary>
     public static void EnsureLooksLikeArchive(string path)
     {
@@ -160,6 +162,10 @@ public static partial class Engine
             throw new EngineException($"Это папка, а не архив: {Path.GetFileName(path)}");
         if (!File.Exists(path))
             throw new EngineException($"Файл не найден: {Path.GetFileName(path)} — возможно, он перемещён или удалён.");
+
+        var ext = Path.GetExtension(path);
+        if (!string.Equals(ext, Extension, StringComparison.OrdinalIgnoreCase)) return;
+
         if (!Has7zSignature(path))
             throw new EngineException(
                 $"Это не архив: {Path.GetFileName(path)}\n\n" +
