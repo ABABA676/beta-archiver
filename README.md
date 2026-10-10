@@ -58,7 +58,7 @@
 
 | Файл | Размер | Когда нужен |
 | --- | --- | --- |
-| [`Beta-win-x64.exe`](https://github.com/ABABA676/beta-archiver/releases/latest/download/Beta-win-x64.exe) | ~0,37 МБ | .NET 8 Desktop Runtime уже установлен |
+| [`Beta-win-x64.exe`](releases/latest/download/Beta-win-x64.exe) | ~0,37 МБ | .NET 8 Desktop Runtime уже установлен |
 | `Beta-win-x64-selfcontained.exe` | ~150 МБ | Нет .NET — работает на любом компьютере |
 
 ## Установка
