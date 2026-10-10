@@ -123,8 +123,10 @@ internal static class Cli
         Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
 
     /// <summary>
-    /// Проверка интерфейса без человека: окно должно создаться, показаться и закрыться без исключений.
-    /// Ловит ошибки вёрстки, которые обычная самопроверка движка не видит.
+    /// Проверка интерфейса без человека и без окна на экране: дескриптор создаётся,
+    /// вёрстка выполняется, окно закрывается без исключений. Окно не показывается —
+    /// проверка не должна мешать пользователю. Ловит ошибки вёрстки, которые обычная
+    /// самопроверка движка не видит.
     /// </summary>
     private static int UiTest()
     {
@@ -132,9 +134,14 @@ internal static class Cli
         {
             ApplicationConfiguration.Initialize();
             using var form = new MainForm([]);
-            form.Show();
-            Application.DoEvents();
-            Thread.Sleep(400);
+
+            // Окно намеренно НЕ показывается: обращение к Handle создаёт и верстает
+            // окно (ловит ошибки вёрстки), но на экране ничего не появляется.
+            form.StartPosition = FormStartPosition.Manual;
+            form.Location = new Point(-32000, -32000);
+            form.Opacity = 0;
+            _ = form.Handle;
+            form.PerformLayout();
             Application.DoEvents();
 
             var buttons = Walk(form).OfType<Button>()

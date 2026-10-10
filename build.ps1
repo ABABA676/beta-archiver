@@ -1,14 +1,18 @@
 ﻿<#
     Сборка «Беты» — один настоящий .exe
 
-      .\build.ps1                 → лёгкая сборка (~0,2 МБ, нужен .NET 8 Desktop Runtime)
+      .\build.ps1                 → лёгкая сборка (~0,37 МБ, нужен .NET 8 Desktop Runtime)
       .\build.ps1 -SelfContained  → один файл (~150 МБ), работает на любом компьютере
+      .\build.ps1 -NoUiTest       → пропустить проверку окна (быстрее, ничего не показывается)
 
     После сборки автоматически прогоняется самопроверка (--selftest).
+    Проверка окна (--uitest) окно на экране НЕ показывает, но если она не нужна —
+    пропускайте её через -NoUiTest.
 #>
 [CmdletBinding()]
 param(
     [switch]$SelfContained,
+    [switch]$NoUiTest,
     [string]$Configuration = 'Release'
 )
 
@@ -34,7 +38,8 @@ Write-Host "==> Готово: $exe ($size МБ)" -ForegroundColor Green
 Write-Host '==> Проверки' -ForegroundColor Cyan
 # GUI-приложение (WinExe): перенаправление через *> не работает — нужен Start-Process -Wait -RedirectStandardOutput.
 $failed = 0
-foreach ($mode in '--selftest', '--uitest') {
+$modes = if ($NoUiTest) { '--selftest' } else { '--selftest', '--uitest' }
+foreach ($mode in $modes) {
     $stamp = [Guid]::NewGuid().ToString('N').Substring(0, 6)
     $outLog = Join-Path $env:TEMP "beta_$($mode.TrimStart('-'))`_$stamp.txt"
     $errLog = $outLog + '.err'
