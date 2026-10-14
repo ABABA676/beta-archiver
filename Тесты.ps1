@@ -15,8 +15,20 @@ $exe = Join-Path $root 'Билд\Бета.exe'
 
 # Пересобираем всегда, если попросили -SelfContained: иначе флаг молча игнорировался бы
 # при уже существующем exe, и пользователь получил бы не тот файл, о котором думает.
-if (-not (Test-Path $exe) -or $SelfContained) {
-    Write-Host 'Сборки нет — собираем…' -ForegroundColor Cyan
+# И ещё: если исходник новее exe — тоже пересобираем. Иначе тесты идут по СТАРОМУ
+# бинарнику: правишь Engine.cs, видишь «зелёные тесты», а проверял старый код.
+$newestSrc = Get-ChildItem -LiteralPath (Join-Path $root 'Код') -Recurse -File `
+                -Include *.cs, *.csproj -ErrorAction SilentlyContinue |
+             Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$needBuild = $SelfContained -or -not (Test-Path $exe)
+if (-not $needBuild -and $newestSrc) {
+    $needBuild = $newestSrc.LastWriteTime -gt (Get-Item -LiteralPath $exe).LastWriteTime
+}
+if ($needBuild) {
+    if ($SelfContained) { $why = '-SelfContained' }
+    elseif (-not (Test-Path $exe)) { $why = 'сборки нет' }
+    else { $why = "исходник новее exe ($($newestSrc.Name))" }
+    Write-Host "Собираем: $why" -ForegroundColor Cyan
     & (Join-Path $root 'build.ps1') -SelfContained:$SelfContained
 }
 

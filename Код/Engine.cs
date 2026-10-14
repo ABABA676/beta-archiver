@@ -204,7 +204,11 @@ public static partial class Engine
         }
         // Диск на месте («C:») — иначе Path.Combine даст «C:имя» (относительно диска), а нам нужен «C:\».
         if (parts.Length == 1 && parts[0].Length == 2 && parts[0][1] == ':') parts = new[] { parts[0], "\\" };
-        return string.Join(Path.DirectorySeparatorChar, parts);
+        var common = string.Join(Path.DirectorySeparatorChar, parts);
+        // Общий родитель иногда НЕ существует: две шары одного сервера дают «\\srv»
+        // (корень сервера без шары), и WorkingDirectory на нём падает с Win32Exception.
+        // Тогда честно отказываемся: вызывающий перейдёт на полные пути внутри архива.
+        return Directory.Exists(common) ? common : null;
     }
 
     /// <summary>Упаковать что угодно (файлы, папки, смесь) в архив 7z с нашим расширением .b3ta.</summary>
@@ -222,7 +226,15 @@ public static partial class Engine
         foreach (var item in items)
         {
             var full = Path.GetFullPath(item);
-            dirOf.Add(Directory.Exists(full) ? Directory.GetParent(full)!.FullName : Path.GetDirectoryName(full)!);
+            // Раньше здесь стоял '!' — он молча ронял приложение с NullReferenceException,
+            // если путь оказывался корнем диска или шары: GetParent для «C:\» даёт null.
+            var itemDir = Directory.Exists(full)
+                ? Directory.GetParent(full)?.FullName
+                : Path.GetDirectoryName(full);
+            if (string.IsNullOrEmpty(itemDir))
+                throw new EngineException(
+                    $"Не удалось определить папку для «{item}» — укажите файл или папку целиком.");
+            dirOf.Add(itemDir);
         }
 
         string? workDir = CommonParent(dirOf);
