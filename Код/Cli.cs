@@ -284,8 +284,22 @@ internal static class Cli
             var extractedBin = Path.Combine(outDir, "Исходные данные", "картинка.bin");
             Check("двоичный файл 2 МБ совпал", File.Exists(extractedBin) && Sha256(extractedBin) == Sha256(bigFile));
 
-            // 6. 7-Zip считает наш .b3ta целым
-            Check("7z t — архив без ошибок", Engine.Test(arc).ExitCode == 0);
+            // 6. 7-Zip считает наш .b3ta целым.
+            //    Раньше стояло Engine.Test(arc).ExitCode == 0 — но Test() зовёт EnsureOk,
+            //    который бросает при любом коде ≠ 0 РАНЬШЕ возврата. Проверка была всегда
+            //    истинной: настоящий провал не печатал FAIL, а обрывал весь прогон.
+            var testOk = true;
+            var testNote = "";
+            try
+            {
+                testOk = Engine.Test(arc).ExitCode == 0;
+            }
+            catch (Exception ex)
+            {
+                testOk = false;
+                testNote = ex.Message;
+            }
+            Check("7z t — архив без ошибок", testOk, testNote);
 
             // 7. расширение не важно: тот же файл под другим именем читается
             var renamed = Path.Combine(tmp, "чужая_имя.xyz");
@@ -330,7 +344,10 @@ internal static class Cli
                 File.Exists(zip) && Engine.Has7zSignature(zip) == false && Engine.List(zip).Count > 0);
             var gz = Path.Combine(tmp, "проверка.txt.gz");
             RunZip("a", gz, Path.Combine(srcRoot, "картинка.bin"));
-            Check("чужой формат .gz тоже читается", !gz.Contains(".b3ta") && Engine.List(gz).Count > 0);
+            // Раньше было `!gz.Contains(".b3ta")` — это проверка локальной константы самого
+            // теста: путь собран выше и наше расширение содержать не может. Условие всегда
+            // истинно, то есть проверка проверяла саму себя.
+            Check("чужой формат .gz тоже читается", Engine.List(gz).Count > 0);
 
             // 11. отмена: токен отменён до старта — 7z должен быть убит, а программа — выйти без зависания
             using (var cts = new CancellationTokenSource())
