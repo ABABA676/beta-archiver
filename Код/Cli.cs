@@ -325,6 +325,44 @@ internal static class Cli
             Engine.Extract(renamed, renamedOut);
             Check("…и распаковывается", File.Exists(Path.Combine(renamedOut, "Исходные данные", "вложенная", "проверка текста.txt")));
 
+            // 7a. Много файлов — длинная командная строка.
+            //     Windows не даёт командной строке длиннее 32 768 символов, поэтому
+            //     упаковка 300+ файлов падала с Win32Exception ещё до старта 7-Zip.
+            //     Проверяем по-настоящему: длинные имена, много файлов, все в архиве.
+            var manyDir = Path.Combine(tmp, "много файлов");
+            Directory.CreateDirectory(manyDir);
+            var manyPaths = new List<string>();
+            for (var i = 0; i < 320; i++)
+            {
+                // Имя длиной ~90 символов: 320 таких путей заведомо переваливают предел.
+                var name = new string('ф', 80) + i.ToString("D3") + ".txt";
+                var full = Path.Combine(manyDir, name);
+                File.WriteAllText(full, payload);
+                manyPaths.Add(full);
+            }
+            var arcMany = Path.Combine(tmp, $"много{Engine.Extension}");
+            // Ловим исключение сами: иначе один сбойный пункт обрывает весь прогон
+            // и последняя напечатанная строка не говорит, что именно сломалось.
+            var lines = new List<string>();
+            try
+            {
+                Engine.Pack(arcMany, manyPaths, 1, null, lines.Add);
+                var packedMany = Engine.List(arcMany);
+                Check($"упаковка 320 файлов обходит предел командной строки ({packedMany.Count} шт.)",
+                      packedMany.Count == manyPaths.Count, $"получено {packedMany.Count} из {manyPaths.Count}");
+            }
+            catch (Exception ex)
+            {
+                // Первая строка журнала — полная команда «7z …». Показываем начало:
+                // на 320 файлах она занимает пол-экрана, а суть ошибки — в хвосте.
+                if (lines.Count > 0)
+                {
+                    var cmd = lines[0];
+                    Console.WriteLine("      " + (cmd.Length > 400 ? cmd[..400] + " …" : cmd));
+                }
+                Check("упаковка 320 файлов обходит предел командной строки", false, ex.Message);
+            }
+
             // 8. уровни сжатия реально различаются.
             //    Раньше жали srcRoot, где лежит картинка на 2 МБ СЛУЧАЙНЫХ байт: такой
             //    файл не сжимается ни на каком уровне, поэтому len9 <= len0 проходило даже

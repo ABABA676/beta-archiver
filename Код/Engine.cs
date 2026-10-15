@@ -245,6 +245,10 @@ public static partial class Engine
             "--", Path.GetFullPath(archivePath)
         };
 
+        // С этого индекса в args идут сами пути — их и выносим в файл списка.
+        // Считать ДО цикла: посчитанный после, он указывал бы на конец args, и файл
+        // списка вышел бы пустым, а 7-Zip счёл бы его обычным файлом к добавлению.
+        var pathsStart = args.Count;
         foreach (var item in items)
         {
             var full = Path.GetFullPath(item).TrimEnd('\\', '/');
@@ -267,9 +271,56 @@ public static partial class Engine
         var parent = Path.GetDirectoryName(Path.GetFullPath(archivePath));
         if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
 
-        var run = Run(args, progress, log, workDir, ct: ct);
-        EnsureOk(run, "упаковать");
-        return run;
+        var listFile = MaybeUseListFile(args, pathsStart, log);
+        try
+        {
+            var run = Run(args, progress, log, workDir, ct: ct);
+            EnsureOk(run, "упаковать");
+            return run;
+        }
+        finally
+        {
+            if (listFile is not null)
+            {
+                try { File.Delete(listFile); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Windows не даёт командной строке длиннее 32 768 символов: упаковка 300+ файлов
+    /// падала с Win32Exception ещё до старта 7-Zip. Длинный список путей выносим в
+    /// файл и передаём как «@файл» — 7-Zip читает такой файл построчно. Пути внутри
+    /// остаются относительными, поэтому рабочая папка (workDir) не меняется и пути
+    /// внутри архива не портятся.
+    /// </summary>
+    private static string? MaybeUseListFile(List<string> args, int pathsStart, Action<string>? log)
+    {
+        const int limit = 24_000;   // запас до предела Windows: exe, ключи, кавычки, кириллица в UTF-16
+        var length = args.Sum(a => a.Length + 3);
+        if (length <= limit) return null;
+
+        var file = Path.Combine(Path.GetTempPath(), $"b3ta-{Guid.NewGuid():N}.lst");
+        // Каждая строка — один аргумент. Кавычки обязательны: в путях есть пробелы.
+        File.WriteAllLines(file, args.GetRange(pathsStart, args.Count - pathsStart)
+                                       .Select(p => p.Contains(' ') ? $"\"{p}\"" : p));
+        var paths = args.Count - pathsStart;
+        // Ссылку на список ставим сразу ПОСЛЕ имени архива и убираем «--».
+        // Проверено на 7-Zip 23.01:
+        //   • «@список» ДО имени архива — 7-Zip делает первым не-ключом имя архива,
+        //     то есть архивом становится сам список файлов, а настоящий архив
+        //     уезжает в «добавляемые файлы» (ошибка «не удалось открыть файл @…»);
+        //   • «--» перед архивом — после него 7-Zip раскрывать «@список» перестаёт
+        //     вовсе, архив получается пустым.
+        // Без «--» пути внутри списка читаются как имена файлов, а не как ключи.
+        var dash = args.IndexOf("--");
+        args.RemoveRange(pathsStart, args.Count - pathsStart);
+        if (dash >= 0) args.RemoveAt(dash);
+        args.Add("@" + file);
+        log?.Invoke($"Путей много ({paths}), список вынесен во временный файл.");
+        return file;
     }
 
     public static EngineRun Extract(
