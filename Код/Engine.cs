@@ -289,11 +289,11 @@ public static partial class Engine
     }
 
     /// <summary>Что внутри архива — список записей с размерами.</summary>
-    public static List<EntryInfo> List(string archivePath)
+    public static List<EntryInfo> List(string archivePath, CancellationToken ct = default)
     {
         // -ba убирает баннер, шапку архива и разделители — остаётся чистый поток блоков «пустая строка / Поле = Значение»
         EnsureLooksLikeArchive(archivePath);
-        var run = Run(new[] { "l", "-slt", "-ba", "-bb0", "-sccUTF-8", "--", Path.GetFullPath(archivePath) });
+        var run = Run(new[] { "l", "-slt", "-ba", "-bb0", "-sccUTF-8", "--", Path.GetFullPath(archivePath) }, ct: ct);
         EnsureOk(run, "прочитать список файлов");
 
         var list = new List<EntryInfo>();

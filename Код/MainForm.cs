@@ -351,6 +351,11 @@ public sealed class MainForm : Form
         {
             var run = Engine.Pack(dst, items, _level.SelectedIndex, prog, log, ct);
             log($"Готово: {dst} — {EntryInfo.Human(new FileInfo(dst).Length)}");
+            // После упаковки кнопки «Что внутри» и «Распаковать» оставались серыми:
+            // _lastDrop продолжал указывать на исходники, и новый .b3ta в него не
+            // попадал. Теперь выбор переезжает на готовый архив.
+            // Только после успеха: Engine.Pack бросает при ошибке, и тогда переезжать не на что.
+            Ui(() => { _lastDrop = [dst]; UpdateButtons(); });
             return run;
         });
     }
@@ -378,9 +383,11 @@ public sealed class MainForm : Form
     {
         var archive = _lastDrop.FirstOrDefault(Engine.LooksLikeArchive);
         if (string.IsNullOrEmpty(archive)) return;
-        await RunJobAsync($"Читаю список: {Path.GetFileName(archive)}", (_, _, log) =>
+        // Раньше токен глушился как '_': кнопка «Отмена» и X ничего не убивали,
+        // а листинг большого архива мог идти до 30 минут.
+        await RunJobAsync($"Читаю список: {Path.GetFileName(archive)}", (ct, _, log) =>
         {
-            var list = Engine.List(archive);
+            var list = Engine.List(archive, ct);
             log($"Записей: {list.Count}");
             foreach (var e in list.Take(400)) log($"  {EntryInfo.Human(e.Size),10}  {e.Path}");
             if (list.Count > 400) log($"  …и ещё {list.Count - 400}");
