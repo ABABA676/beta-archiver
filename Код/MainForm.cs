@@ -349,15 +349,39 @@ public sealed class MainForm : Form
         Log($"Упаковываю в {dst} (уровень {_level.SelectedIndex}, {items.Length} шт.)");
         await RunJobAsync($"Упаковка: {Path.GetFileName(dst)}", (ct, prog, log) =>
         {
-            var run = Engine.Pack(dst, items, _level.SelectedIndex, prog, log, ct);
-            log($"Готово: {dst} — {EntryInfo.Human(new FileInfo(dst).Length)}");
-            // После упаковки кнопки «Что внутри» и «Распаковать» оставались серыми:
-            // _lastDrop продолжал указывать на исходники, и новый .b3ta в него не
-            // попадал. Теперь выбор переезжает на готовый архив.
-            // Только после успеха: Engine.Pack бросает при ошибке, и тогда переезжать не на что.
-            Ui(() => { _lastDrop = [dst]; UpdateButtons(); });
-            return run;
+            try
+            {
+                var run = Engine.Pack(dst, items, _level.SelectedIndex, prog, log, ct);
+                log($"Готово: {dst} — {EntryInfo.Human(new FileInfo(dst).Length)}");
+                // После упаковки кнопки «Что внутри» и «Распаковать» оставались серыми:
+                // _lastDrop продолжал указывать на исходники, и новый .b3ta в него не
+                // попадал. Теперь выбор переезжает на готовый архив.
+                // Только после успеха: Engine.Pack бросает при ошибке, и тогда переезжать не на что.
+                Ui(() => { _lastDrop = [dst]; UpdateButtons(); });
+                return run;
+            }
+            catch
+            {
+                // Отмена или сбой оставляют «полуархив»: файл с валидной сигнатурой 7z,
+                // но недописанный. Следующий «Что внутри» на нём даёт «код 2» — это и есть
+                // путь возврата жалобы пользователя. Полуархив — мусор, убираем.
+                DropPartial(dst, log);
+                throw;
+            }
         });
+    }
+
+    /// <summary>Убрать недописанный архив. Молча: файл может быть уже занят.</summary>
+    private static void DropPartial(string path, Action<string>? log)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+            File.Delete(path);
+            log?.Invoke($"Убрал полуархив: {Path.GetFileName(path)}");
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     private async Task ExtractAsync(string archive)
