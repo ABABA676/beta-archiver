@@ -181,6 +181,22 @@ internal static class Cli
             else { fail++; Console.WriteLine($"  FAIL  {name}{(detail is null ? "" : " — " + detail)}"); }
         }
 
+        // ---- СТЕНД ОХРАНЯЕТ САБЯ ----
+        // В проекте не было НИ ОДНОЙ мутации: все проверки ни разу не были доказаны
+        // способными упасть. Из-за этого урок 15 («-mx потерялся») прошёл незамеченным,
+        // а проверка уровней охраняла пустоту. Здесь намеренно даём заведомо ложное
+        // условие и убеждаемся, что счётчик провалов честно на него среагировал.
+        // Если сломают сам счётчик или саму Check — упадёт уже этот кусок.
+        var passBefore = pass;
+        var failBefore = fail;
+        Check("СТЕНД: обычная проверка идёт в успех", true);
+        Check("СТЕНД: от успеха счётчики не сдвинулись", pass == passBefore + 1 && fail == failBefore);
+        Check("СТЕНД (намеренный провал) — так выглядит работающая проверка", false);
+        Check("СТЕНД: счётчик провалов отработал", fail == failBefore + 1);
+        // Намеренный провал не должен ломать прогон — откатываем ТОЛЬКО его.
+        // Три успешные проверки выше честные, их не откатываем: они в счёт идут.
+        fail = failBefore;
+
         // Вызывает Engine.List и ждёт понятную ошибку вместо «код 2» от 7-Zip
         static bool TryFails(string path, out string message)
         {
@@ -309,14 +325,23 @@ internal static class Cli
             Engine.Extract(renamed, renamedOut);
             Check("…и распаковывается", File.Exists(Path.Combine(renamedOut, "Исходные данные", "вложенная", "проверка текста.txt")));
 
-            // 8. уровни сжатия реально различаются
+            // 8. уровни сжатия реально различаются.
+            //    Раньше жали srcRoot, где лежит картинка на 2 МБ СЛУЧАЙНЫХ байт: такой
+            //    файл не сжимается ни на каком уровне, поэтому len9 <= len0 проходило даже
+            //    при полностью проигноренном -mx — а именно этот баг уже чинили (урок 15).
+            //    Значит проверка охраняла пустоту. Теперь жали заведомо сжимаемое и
+            //    требуем СТРОГОГО улучшения: игнорированный -mx её провалит.
+            var levelDir = Path.Combine(tmp, "уровни");
+            Directory.CreateDirectory(levelDir);
+            File.WriteAllBytes(Path.Combine(levelDir, "однотипный.txt"),
+                               System.Text.Encoding.ASCII.GetBytes(new string('A', 400_000)));
             var arc0 = Path.Combine(tmp, $"без сжатия{Engine.Extension}");
             var arc9 = Path.Combine(tmp, $"максимум{Engine.Extension}");
-            Engine.Pack(arc0, new[] { srcRoot }, 0);
-            Engine.Pack(arc9, new[] { srcRoot }, 9);
+            Engine.Pack(arc0, new[] { levelDir }, 0);
+            Engine.Pack(arc9, new[] { levelDir }, 9);
             var len0 = new FileInfo(arc0).Length;
             var len9 = new FileInfo(arc9).Length;
-            Check("уровень 9 жмёт не хуже уровня 0", len9 <= len0, $"{len9} > {len0}");
+            Check("уровень 9 жмёт сильнее уровня 0", len9 < len0, $"{len9} >= {len0}");
 
             // 9. прогресс реально приходит
             var seen = new List<int>();
