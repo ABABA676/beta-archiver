@@ -399,6 +399,16 @@ internal static class Cli
                 TryFails(fakeDir, out var dirMsg) && dirMsg.Contains("папка"), dirMsg);
             Check("несуществующий файл → «не найден»",
                 TryFails(Path.Combine(tmp, "нет-такого.b3ta"), out var missMsg) && missMsg.Contains("не найден"), missMsg);
+            // битый архив: сигнатура 7z на месте (значит проверка «не архив» его пропускает),
+            // а тело — мусор. Раньше на этом пользователь видел голое «код 2».
+            var corrupt = Path.Combine(tmp, $"битый{Engine.Extension}");
+            File.Copy(arc, corrupt);
+            // Отрезаем хвост: у 7z заголовок лежит в конце файла, поэтому без него
+            // 7-Zip не может разобрать архив. Порча середины ненадёжна — часть архивов
+            // 7-Zip ещё переживает (проверено на 6776-байтном: порча с 32-го байта даёт rc=0).
+            using (var fs = File.Open(corrupt, FileMode.Open, FileAccess.Write)) fs.SetLength(fs.Length - 8);
+            Check("битый .b3ta → своя понятная фраза + причина от 7-Zip, а не голое «код 2»",
+                TryFails(corrupt, out var corruptMsg) && corruptMsg.Contains("7-Zip") && !corruptMsg.Trim().Equals("код 2"), corruptMsg);
 
             // 11. Регрессия: чужие форматы 7z нельзя рубить по сигнатуре 7z — «Что внутри» должно работать и на .zip
             var zip = Path.Combine(tmp, "проверка.zip");
